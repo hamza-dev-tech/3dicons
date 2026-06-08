@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rotating Kaaba — 3D Model</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 30%, #1a1a2e 0%, #0d0d1a 100%);
+      font-family: system-ui, sans-serif;
+    }
+    model-viewer {
+      width: 90vw;
+      max-width: 600px;
+      height: 600px;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <model-viewer
+    src="kaaba.glb"
+    alt="Rotating 3D Kaaba"
+    auto-rotate
+    rotation-per-second="20deg"
+    camera-controls
+    touch-action="pan-y"
+    shadow-intensity="1"
+    exposure="1.1"
+    environment-image="neutral">
+  </model-viewer>
+</body>
+</html>

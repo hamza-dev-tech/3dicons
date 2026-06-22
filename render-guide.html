@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<style>html,body{margin:0;background:transparent;overflow:hidden}#stage{width:100vw;height:100vh}canvas{display:block;width:100%;height:100%}</style>
+</head><body>
+<div id="stage"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+const Q = new URLSearchParams(location.search);
+const num=(k,d)=>Q.has(k)?+Q.get(k):d;
+const LIVE = Q.get('live')!=='0';           // live RAF loop (default on); strip renderer passes live=0
+const LOOP = num('loop',20);                // seconds for one full calm tawaf
+const EXP = num('exp',1.72);
+const ROBE = num('robe',0.80);
+const TEXBASE=location.pathname.replace(/[^/]*$/,'');           // dir of this html (textures co-located)
+const BASE = Q.get('base') || TEXBASE;                          // models co-located by default; local passes ?base=../models/
+let W = innerWidth||340, H = innerHeight||190;
+
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2)); renderer.setSize(W,H,false); renderer.setClearColor(0x000000,0);
+renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=EXP;
+const cv=renderer.domElement; cv.width=W*renderer.getPixelRatio(); cv.height=H*renderer.getPixelRatio();
+document.getElementById('stage').appendChild(cv);
+
+const scene=new THREE.Scene();
+function gradEnv(){ const c=document.createElement('canvas');c.width=8;c.height=256;const g=c.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,256);gr.addColorStop(0,'#f2eee5');gr.addColorStop(.5,'#cdc7ba');gr.addColorStop(1,'#6b665d');
+  g.fillStyle=gr;g.fillRect(0,0,8,256);const t=new THREE.CanvasTexture(c);t.mapping=THREE.EquirectangularReflectionMapping;t.colorSpace=THREE.SRGBColorSpace;return t; }
+const pmrem=new THREE.PMREMGenerator(renderer);
+scene.environment=pmrem.fromEquirectangular(gradEnv()).texture; scene.environmentIntensity=1.25;
+
+const camera=new THREE.PerspectiveCamera(30,W/H,0.1,50);
+camera.position.set(0.0,1.16,3.55); camera.lookAt(0,0.46,0);
+function resize(){ W=innerWidth; H=innerHeight; renderer.setSize(W,H,false); camera.aspect=W/H; camera.updateProjectionMatrix(); }
+addEventListener('resize',resize);
+scene.add(new THREE.HemisphereLight(0xfff6e6,0x99948a,1.15));
+const key=new THREE.DirectionalLight(0xfff2da,2.7); key.position.set(2.6,3.8,3); scene.add(key);
+const fill=new THREE.DirectionalLight(0xffffff,0.9); fill.position.set(-1.6,1.0,2.6); scene.add(fill);
+const rim=new THREE.DirectionalLight(0xffe9c0,1.7); rim.position.set(-2.4,2.0,-2.4); scene.add(rim);
+
+// ---------- the EXACT icon Kaaba (toon kiswah + calligraphy band + ornate door decals) ----------
+const TFLOOR=48, STEPS=4;
+function toonGrad(n){ const c=document.createElement('canvas');c.width=n;c.height=1;const g=c.getContext('2d');
+  for(let i=0;i<n;i++){ const v=Math.round(TFLOOR+(255-TFLOOR)*(i/(n-1))); g.fillStyle=`rgb(${v},${v},${v})`; g.fillRect(i,0,1,1);}
+  const t=new THREE.CanvasTexture(c);t.minFilter=t.magFilter=THREE.NearestFilter;return t; }
+const GRAD=toonGrad(STEPS);
+const tl=new THREE.TextureLoader();
+const bandTex=tl.load(TEXBASE+'asset_band.png'); bandTex.colorSpace=THREE.SRGBColorSpace; bandTex.anisotropy=8;
+const doorTex=tl.load(TEXBASE+'asset_door.png'); doorTex.colorSpace=THREE.SRGBColorSpace; doorTex.anisotropy=8;
+const KISWAH=new THREE.MeshToonMaterial({ color:0x24242a, gradientMap:GRAD });
+const GOLD=new THREE.MeshStandardMaterial({ color:0x8d7c52, roughness:0.46, metalness:0.5 });
+const goldTexMat=(map)=>new THREE.MeshStandardMaterial({ map, roughness:0.34, metalness:0.5, transparent:true });
+function buildKaaba(){
+  const g=new THREE.Group(); const Wd=1.0,Hd=1.08,Dd=1.0;
+  const body=new THREE.Mesh(new RoundedBoxGeometry(Wd,Hd,Dd,7,0.065),KISWAH); body.position.y=Hd/2; g.add(body);
+  const bandY=Hd*0.70, bandH=0.092;
+  const ring=new THREE.Mesh(new RoundedBoxGeometry(Wd+0.004,bandH*0.96,Dd+0.004,3,0.026),GOLD); ring.position.y=bandY; g.add(ring);
+  const bp=(rotY,px,pz,by,bh)=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(Wd*1.04,bh),goldTexMat(bandTex)); m.position.set(px,by,pz); m.rotation.y=rotY; g.add(m); };
+  for(const[r,x,z]of[[0,0,Dd/2+0.010],[Math.PI,0,-Dd/2-0.010],[Math.PI/2,Wd/2+0.010,0],[-Math.PI/2,-Wd/2-0.010,0]]) bp(r,x,z,bandY,bandH);
+  const bandY2=Hd*0.585, bandH2=0.055;
+  const ring2=new THREE.Mesh(new RoundedBoxGeometry(Wd+0.004,bandH2*0.96,Dd+0.004,3,0.026),GOLD); ring2.position.y=bandY2; g.add(ring2);
+  for(const[r,x,z]of[[0,0,Dd/2+0.010],[Math.PI,0,-Dd/2-0.010],[Math.PI/2,Wd/2+0.010,0],[-Math.PI/2,-Wd/2-0.010,0]]) bp(r,x,z,bandY2,bandH2);
+  const doorAsp=875/492, doorW=0.34, doorH=doorW*doorAsp*0.92;
+  const door=new THREE.Mesh(new THREE.PlaneGeometry(doorW,doorH),goldTexMat(doorTex)); door.position.set(0,Hd*0.305,Dd/2+0.013); g.add(door);
+  return g;
+}
+function norm(root,h){ const b=new THREE.Box3().setFromObject(root);const s=b.getSize(new THREE.Vector3());root.scale.setScalar(h/Math.max(s.y,s.x));
+  b.setFromObject(root);const c=b.getCenter(new THREE.Vector3());root.position.x-=c.x;root.position.z-=c.z;root.position.y-=b.min.y;return root; }
+function radial(inner,outer){ const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+  const gr=x.createRadialGradient(128,128,0,128,128,128);gr.addColorStop(0,inner);gr.addColorStop(1,outer);x.fillStyle=gr;x.fillRect(0,0,256,256);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t; }
+const kaaba=norm(buildKaaba(),1.0); kaaba.rotation.y=0.18; scene.add(kaaba);
+const sh=new THREE.Mesh(new THREE.CircleGeometry(0.9,64),new THREE.MeshBasicMaterial({map:radial('rgba(10,8,4,0.40)','rgba(10,8,4,0)'),transparent:true,depthWrite:false}));
+sh.rotation.x=-Math.PI/2; sh.position.y=0.004; sh.scale.set(1.3,1,1.05); scene.add(sh);
+
+// ---------- pilgrims circling (live, continuous, smooth) — guide leads at front ----------
+const figs=[]; let strideLen=0.21; const clock=new THREE.Clock();
+(async()=>{
+  const gl=new GLTFLoader(); const draco=new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); gl.setDRACOLoader(draco);
+  const loadGLB=(f)=>new Promise((res,rej)=>gl.load(BASE+f,res,undefined,rej));
+  const ihram=await loadGLB('crowd_ihram.web.glb');
+  const grey =await loadGLB('crowd_grey.web.glb');
+  const RING=0.68, N=5, front=Math.PI/2;
+  const defs=[];
+  for(let i=0;i<N;i++){ defs.push({ src:i===0?grey:ihram, h:i===0?0.62:0.57, th:front - i*(2*Math.PI/N) }); }
+  for(const d of defs){
+    const clone=SkeletonUtils.clone(d.src.scene);
+    clone.scale.setScalar(d.h/1.7);
+    clone.traverse(o=>{ if(o.isSkinnedMesh&&o.material){ o.material=o.material.clone(); o.material.metalness=0; o.material.roughness=0.9; o.material.envMapIntensity=0.55; o.material.color.multiplyScalar(ROBE); } });
+    const holder=new THREE.Group(); holder.add(clone); scene.add(holder);
+    const mixer=new THREE.AnimationMixer(clone); mixer.clipAction(d.src.animations[0]).play();
+    holder.userData={ th0:d.th, r:RING, mixer, walk:d.src.animations[0].duration };
+    figs.push(holder);
+  }
+  const circ=2*Math.PI*RING; strideLen=circ/Math.round(circ/0.21);
+  renderFrac(0); window.__ready=true;
+  if(LIVE) requestAnimationFrame(tick);
+})().catch(e=>{ window.__error=String(e); console.error(e); });
+
+function renderFrac(frac){
+  for(const p of figs){
+    const u=p.userData; const theta=u.th0 - 2*Math.PI*frac;
+    p.position.set(Math.cos(theta)*u.r,0,Math.sin(theta)*u.r);
+    p.rotation.y=Math.atan2(Math.sin(theta),-Math.cos(theta));
+    const cycles=(-u.r*theta/strideLen);
+    u.mixer.setTime((((cycles%1)+1)%1)*u.walk);
+  }
+  renderer.render(scene,camera);
+}
+function tick(){ const frac=((clock.getElapsedTime()/LOOP)%1+1)%1; renderFrac(frac); requestAnimationFrame(tick); }
+// external (strip/test) hook
+window.renderAt=(t)=>renderFrac(((t/ (num('T',2.4)))%1+1)%1);
+window.__canvasSize=W;
+</script>
+</body></html>
